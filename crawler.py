@@ -41,43 +41,73 @@ async def crawl_tiktok_live(headless=False):
         
         context = await p.chromium.launch_persistent_context(**launch_args)
         
-        # --- PHASE 1: Collect Streamer IDs ---
+        # --- PHASE 1: Collect Streamer IDs from Multiple Categories ---
         print("\nPhase 1: Collecting Active Streamers from Live Feed...")
         page = context.pages[0] if context.pages else await context.new_page()
         
         seen_ids = set()
         
-        try:
-            await page.goto("https://www.tiktok.com/live", timeout=60000)
-            await asyncio.sleep(5)
-            
-            # Scroll loop
-            for i in range(5):
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(2)
+        # Multiple categories to crawl
+        categories = [
+            "https://www.tiktok.com/live",
+            "https://www.tiktok.com/live/gaming",
+            "https://www.tiktok.com/live/music",
+            "https://www.tiktok.com/live/sports",
+            "https://www.tiktok.com/live/entertainment"
+        ]
+        
+        for category_url in categories:
+            try:
+                print(f"  📂 Visiting: {category_url}")
+                await page.goto(category_url, timeout=60000, wait_until="domcontentloaded")
+                await asyncio.sleep(3)
                 
-                # Extract links
-                # We do this in browser context for speed? Or simple Python parsing
-                # Python parsing of hrefs is fine
-                links = await page.query_selector_all('a')
-                for link in links:
-                    href = await link.get_attribute('href')
-                    if href:
-                         match = re.search(r'/@([^/?]+)', href)
-                         if match:
-                            uid = match.group(1)
-                            if uid not in seen_ids:
-                                seen_ids.add(uid)
-                
-                print(f"  -> Found {len(seen_ids)} unique streamers so far...")
-                if len(seen_ids) >= 40: # Buffer
-                    break
+                # Scroll more aggressively
+                for i in range(10):  # Increased from 5 to 10
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(1.5)
                     
-        except Exception as e:
-            print(f"Phase 1 Error: {e}")
+                    # Extract links after each scroll
+                    links = await page.query_selector_all('a')
+                    for link in links:
+                        href = await link.get_attribute('href')
+                        if href:
+                            # Match both /live and regular profile links
+                            match = re.search(r'/@([^/?]+)', href)
+                            if match:
+                                uid = match.group(1)
+                                uid_lower = uid.lower()
+                                
+                                # Filter out unwanted IDs
+                                # - Exclude official TikTok accounts
+                                # - Exclude generic user IDs that START with 'user' (e.g., user123456)
+                                if (uid not in seen_ids and 
+                                    uid not in ['live', 'foryou', 'following'] and
+                                    'tiktok' not in uid_lower and
+                                    not uid_lower.startswith('user')):
+                                    seen_ids.add(uid)
+                    
+                    print(f"    -> Found {len(seen_ids)} unique streamers so far...")
+                    
+                    # Early exit if we have enough
+                    if len(seen_ids) >= 50:
+                        break
+                        
+            except Exception as e:
+                print(f"  ⚠️ Error visiting {category_url}: {e}")
+                continue
             
+            # Stop if we have enough candidates
+            if len(seen_ids) >= 50:
+                break
+        
         streamer_ids_list = list(seen_ids)[:TARGET_COUNT]
-        print(f"\nPhase 1 Complete. Target List ({len(streamer_ids_list)}): {streamer_ids_list}")
+        print(f"\n✅ Phase 1 Complete. Collected {len(streamer_ids_list)} streamers for detailed scraping.")
+        
+        if len(streamer_ids_list) == 0:
+            print("❌ No streamers found. Check your login session or network connection.")
+            await context.close()
+            return
         
         # --- PHASE 2: Parallel Detail Scraping ---
         print(f"\nPhase 2: Scraping details in parallel ({CONCURRENT_PAGES} tabs)...")
@@ -107,33 +137,48 @@ async def crawl_tiktok_live(headless=False):
                 }
                 
                 try:
-                    await worker_page.goto(f"https://www.tiktok.com/@{uid}", timeout=30000)
-                    await asyncio.sleep(1.5) # Short wait
+                    await worker_page.goto(f"https://www.tiktok.com/@{uid}", timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.sleep(2) # Wait for dynamic content
                     
-                    # Extraction
+                    # Extraction with multiple selector attempts
                     try:
-                        # Nickname
-                        # Try multiple selectors
-                        nick_loc = worker_page.locator('[data-e2e="user-subtitle"]').or_(worker_page.locator('h1[data-e2e="user-title"]')) 
-                        if await nick_loc.first.is_visible():
-                            result["nickname"] = await nick_loc.first.inner_text()
-                            
+                        # Nickname - try multiple selectors
+                        nick_selectors = [
+                            '[data-e2e="user-subtitle"]',
+                            'h1[data-e2e="user-title"]',
+                            'h2[data-e2e="user-title"]',
+                            '[data-e2e="user-page-nickname"]'
+                        ]
+                        for selector in nick_selectors:
+                            try:
+                                nick_el = await worker_page.wait_for_selector(selector, timeout=3000)
+                                if nick_el:
+                                    result["nickname"] = await nick_el.inner_text()
+                                    break
+                            except:
+                                continue
+                        
                         # Followers
-                        fol_loc = worker_page.locator('[data-e2e="followers-count"]')
-                        if await fol_loc.is_visible():
-                            result["followers"] = await fol_loc.inner_text()
-                            
+                        try:
+                            fol_el = await worker_page.wait_for_selector('[data-e2e="followers-count"]', timeout=3000)
+                            if fol_el:
+                                result["followers"] = await fol_el.inner_text()
+                        except:
+                            pass
+                        
                         # Likes
-                        like_loc = worker_page.locator('[data-e2e="likes-count"]')
-                        if await like_loc.is_visible():
-                            result["likes"] = await like_loc.inner_text()
-                            
+                        try:
+                            like_el = await worker_page.wait_for_selector('[data-e2e="likes-count"]', timeout=3000)
+                            if like_el:
+                                result["likes"] = await like_el.inner_text()
+                        except:
+                            pass
+                        
                     except Exception as e:
-                        # print(f"    Extract error for {uid}: {e}")
                         pass
                         
                 except Exception as e:
-                    print(f"  [Worker {worker_id}] Failed to load {uid}: {e}")
+                    print(f"  [Worker {worker_id}] ⚠️ Failed to load {uid}: {e}")
                 
                 detailed_results.append(result)
                 queue.task_done()
@@ -151,7 +196,7 @@ async def crawl_tiktok_live(headless=False):
         await context.close()
         
     # --- Save Results ---
-    print(f"\nCrawling Finished! Saving {len(detailed_results)} profiles.")
+    print(f"\n✅ Crawling Finished! Saving {len(detailed_results)} profiles.")
     
     try:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
@@ -162,10 +207,10 @@ async def crawl_tiktok_live(headless=False):
             for s in detailed_results:
                 f.write(s["id"] + "\n")
                 
-        print("Files saved successfully.")
+        print(f"💾 Files saved successfully to {OUTPUT_FILE} and {TXT_FILE}")
         
     except Exception as e:
-        print(f"File Save Error: {e}")
+        print(f"❌ File Save Error: {e}")
 
 
 if __name__ == "__main__":

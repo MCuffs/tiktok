@@ -39,19 +39,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             
-            # Run the crawler script
+            # Run the crawler script in headless mode (background)
             try:
-                # We assume crawler.py is in the current directory and runnable
-                # Running in headless mode for the server background task usually, 
-                # but user might want to see browser. Let's force headless=False as per previous context?
-                # Or maybe headless=True is better for a "background" button effect. 
-                # Let's use the default (which currently uses saved session and defaults to headless=False in script if not arg provided).
-                
-                # To make it "background" feel, perhaps we return immediately? 
-                # But the user probably wants to wait.
                 
                 print("Running crawler...")
-                subprocess.run(["python3", "crawler.py"], check=True)
+                subprocess.run(["python3", "crawler.py", "--headless"], check=True)
                 
                 self.wfile.write(json.dumps({"status": "success", "message": "Crawling finished"}).encode())
             except Exception as e:
