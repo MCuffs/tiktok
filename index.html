@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>티톡 라이브 대시보드</title>
+  <style>
+    :root {
+      --bg-color: #0f0f12;
+      --card-bg: #1c1c24;
+      --primary: #ff0050;
+      /* TikTok Red/Pink */
+      --secondary: #00f2ea;
+      /* TikTok Cyan */
+      --text-main: #ffffff;
+      --text-muted: #8a8b98;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px;
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(to right, var(--secondary), var(--text-main), var(--primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      /* standard propery */
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      background-color: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button:hover {
+      background-color: #2a2a35;
+      transform: translateY(-1px);
+    }
+
+    button.primary {
+      background-color: var(--primary);
+      border-color: var(--primary);
+      box-shadow: 0 4px 15px rgba(255, 0, 80, 0.3);
+    }
+
+    button.primary:hover {
+      background-color: #d60043;
+      box-shadow: 0 6px 20px rgba(255, 0, 80, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    main {
+      width: 100%;
+      max-width: 900px;
+    }
+
+    .status-bar {
+      margin-bottom: 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--text-muted);
+      border-top: 2px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .streamer-card {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: transform 0.2s ease;
+      position: relative;
+    }
+
+    .streamer-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .streamer-info h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .streamer-id-display {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.2s;
+    }
+
+    .streamer-id-display:hover {
+      color: var(--secondary);
+    }
+
+    .stats-row {
+      display: flex;
+      gap: 15px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-val {
+      font-weight: 700;
+      color: var(--text-main);
+      font-size: 1rem;
+    }
+
+    .action-row {
+      margin-top: auto;
+      padding-top: 15px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--text-muted);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>TikTok Live Monitor</h1>
+    <div class="controls">
+      <button id="refreshBtn">목록 새로고침</button>
+      <button id="copyBtn">전체 ID 복사</button>
+      <button id="crawlBtn" class="primary">
+        <span>크리에이터 불러오기</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status-bar">
+      <div class="spinner" id="spinner"></div>
+      <span id="statusText">준비됨</span>
+    </div>
+
+    <div id="grid" class="card-grid">
+      <!-- Cards will go here -->
+    </div>
+  </main>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const statusText = document.getElementById('statusText');
+    const spinner = document.getElementById('spinner');
+    const crawlBtn = document.getElementById('crawlBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const copyBtn = document.getElementById('copyBtn');
+
+    let currentStreamers = [];
+
+    function setLoading(isLoading, text) {
+      statusText.textContent = text;
+      spinner.style.display = isLoading ? 'block' : 'none';
+      crawlBtn.disabled = isLoading;
+    }
+
+    // --- CORE FUNCTIONS ---
+
+    async function loadStreamers() {
+      try {
+        const res = await fetch('/streamers');
+        const data = await res.json();
+
+        // Limit to 30
+        const limited = data.streamers.slice(0, 30);
+        currentStreamers = limited;
+
+        renderCards(limited);
+        setLoading(false, `총 ${limited.length}명의 크리에이터를 불러왔습니다. (최대 30명)`);
+      } catch (e) {
+        setLoading(false, '목록 불러오기 실패');
+        console.error(e);
+      }
+    }
+
+    async function startCrawl() {
+      setLoading(true, '크롤링 진행 중... (시간이 조금 걸립니다)');
+      try {
+        const res = await fetch('/crawl', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+          setLoading(false, '크롤링 완료!');
+          loadStreamers();
+        } else {
+          setLoading(false, '크롤링 오류 발생: ' + data.message);
+        }
+      } catch (e) {
+        setLoading(false, '서버 요청 실패');
+        console.error(e);
+      }
+    }
+
+    function copyAll() {
+      if (!currentStreamers || currentStreamers.length === 0) {
+        alert("복사할 크리에이터가 없습니다.");
+        return;
+      }
+      // ID only, no @
+      const textToCopy = currentStreamers.map(s => s.id).join('\n');
+      copyToClipboard(textToCopy, copyBtn);
+    }
+
+    function copyId(id, btnElement) {
+      copyToClipboard(id, btnElement, "ID 복사됨!");
+    }
+
+    function copyMessage(streamer, btnElement) {
+      const name = streamer.nickname || streamer.id; // Fallback to ID if no nickname
+      const message = `안녕하세요! "${name}" 님 트렌드웨이브 입니다.
+저희는 성장성 있고 잠재성을 지닌 크리에이터를 발굴해서 팀을 꾸려가고 있는데요!
+
+"${name}"님이 눈에 들어와서 메세지 드렸습니다.
+
+협업 매치나 추가 협찬 등에 대해 잠깐 대화 나눠보시면 좋을듯 합니다 :)`;
+
+      copyToClipboard(message, btnElement, "멘트 복사됨!");
+    }
+
+    function copyToClipboard(text, btnElement, successText = "완료!") {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btnElement.innerText;
+        btnElement.innerText = successText;
+        setTimeout(() => {
+          btnElement.innerText = originalText;
+        }, 1500);
+      }).catch(err => {
+        console.error('Failed to copy', err);
+      });
+    }
+
+    function renderCards(streamers) {
+      grid.innerHTML = '';
+
+      if (!streamers || streamers.length === 0) {
+        grid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 40px; background: #1c1c24; border-radius: 12px;">
+                        수집된 크리에이터가 없습니다.<br>
+                        '크리에이터 불러오기' 버튼을 눌러주세요.
+                    </div>
+                `;
+        return;
+      }
+
+      streamers.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'streamer-card';
+
+        // Fallback for nickname
+        const displayNick = (s.nickname && s.nickname !== s.id) ? s.nickname : s.id;
+
+        // Construct Display
+        card.innerHTML = `
+            <div class="card-header">
+                <div class="streamer-info">
+                    <h3>${displayNick}</h3>
+                    <div class="streamer-id-display" onclick="copyId('${s.id}', this)">
+                        <span>@${s.id}</span>
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.243a2 2 0 00-.586-1.414l-5-5A2 2 0 0013.071 4H10a2 2 0 00-2 2z"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span>Followers</span>
+                            <span class="stat-val">${s.followers || '-'}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Likes</span>
+                            <span class="stat-val">${s.likes || '-'}</span>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button class="btn-small btn-outline" onclick='copyMessage(${JSON.stringify(s)}, this)'>
+                            멘트 복사하기
+                        </button>
+                        <a href="https://www.tiktok.com/@${s.id}/live" target="_blank" style="flex:1">
+                            <button class="btn-small primary" style="width:100%">
+                                라이브 가기
+                            </button>
+                        </a>
+                    </div>
+                `;
+        grid.appendChild(card);
+      });
+    }
+
+    // Event Listeners
+    crawlBtn.addEventListener('click', startCrawl);
+    refreshBtn.addEventListener('click', loadStreamers);
+    copyBtn.addEventListener('click', copyAll);
+
+    // Initial Load
+    loadStreamers();
+  </script>
+</body>
+
+</html>
