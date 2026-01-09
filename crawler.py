@@ -31,9 +31,11 @@ async def crawl_tiktok_live(headless=False):
         
         launch_args = {
             "user_data_dir": USER_DATA_DIR,
-            "headless": headless,
+            "headless": False,  # Keep visible for better success rate
             "args": args,
-            "viewport": {'width': 1280, 'height': 800}
+            "viewport": {'width': 1280, 'height': 800},
+            # Minimize window to reduce distraction
+            "ignore_default_args": ["--enable-automation"]
         }
         
         if chrome_path:
