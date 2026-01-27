@@ -325,11 +325,11 @@
 
     async function loadStreamers() {
       try {
-        const res = await fetch('/streamers');
+        const res = await fetch('/streamers?t=' + new Date().getTime());
         const data = await res.json();
 
-        // Limit to 30
-        const limited = data.streamers.slice(0, 30);
+        // Limit to 50
+        const limited = data.streamers.slice(0, 50);
         currentStreamers = limited;
 
         renderCards(limited);
@@ -346,18 +346,26 @@
       setLoading(true, '크롤링 진행 중... (시간이 조금 걸립니다)');
       try {
         const res = await fetch('/crawl', { method: 'POST' });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Server Error: ${res.status} ${text}`);
+        }
+
         const data = await res.json();
+
         if (data.status === 'success') {
           setLoading(false, '크롤링 완료!');
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Wait a bit more for file system to sync
+          await new Promise(resolve => setTimeout(resolve, 4000));
           await loadStreamers();
           return true;
         } else {
-          setLoading(false, '크롤링 오류 발생: ' + data.message);
+          setLoading(false, '크롤링 오류 발생: ' + (data.message || JSON.stringify(data)));
           return false;
         }
       } catch (e) {
-        setLoading(false, '서버 요청 실패');
+        setLoading(false, '실패: ' + e.message);
         console.error(e);
         return false;
       }
@@ -447,35 +455,49 @@
       copyToClipboard(id, btnElement, "ID 복사됨!");
     }
 
-    function copyMessage(streamer, btnElement) {
-      const name = streamer.nickname || streamer.id;
+    function copyMessage(id, nickname, btnElement) {
+      const name = nickname || id;
       const message = `[크리에이터 제안]
-안녕하세요! 트렌드웨이브 입니다.
-저희는 성장성 있고 잠재성을 지닌 크리에이터를 발굴해서 팀을 꾸려가고 있는데요!
+안녕하세요, 아서리안 스튜디오 입니다.
+저희는 딱 10명의 잠재성을 지닌 크리에이터를 발굴 하여 팀을 꾸려가고 있습니다
 
-${name} 님이 눈에 들어와서 메세지 드렸습니다.
+${name} 님께 참여를 제안드려보고 싶어서 안내 드립니다.
 
-협업 매치나 추가 협찬 등에 대해 잠깐 대화 나눠보시면 좋을듯 합니다 :)`;
+아서리안만의 특별 인센티브나 채널 성장에 대해 대화 나눠보시면 좋을듯 합니다 : )`;
 
       copyToClipboard(message, btnElement, "멘트 복사됨!");
     }
 
-    function copyToClipboard(text, btnElement, successText = "완료!") {
+    function copyMessageEn(id, nickname, btnElement) {
+      const name = nickname || id;
+      const message = `[Creator Proposal]
+Hello, this is Arthurian Studio.
+We are building a selected team of just 10 high-potential creators.
+
+We are reaching out because we'd like to invite you, ${name}, to join us.
+
+We would love to discuss Arthurian's exclusive incentives and channel growth strategies with you : )`;
+
+      copyToClipboard(message, btnElement, "(ENG) 복사됨!");
+    }
+
+    function copyToClipboard(text, btnElement, successText = "복사됨!") {
       navigator.clipboard.writeText(text).then(() => {
-        const originalText = btnElement.innerText;
-        btnElement.innerText = successText;
+        const originalText = btnElement.textContent;
+        btnElement.textContent = successText;
         setTimeout(() => {
-          btnElement.innerText = originalText;
+          btnElement.textContent = originalText;
         }, 1500);
       }).catch(err => {
-        console.error('Failed to copy', err);
+        console.error('Failed to copy: ', err);
+        alert('클립보드 복사 실패!');
       });
     }
 
-    function openDM(creatorId) {
-      // Open TikTok DM/profile with creator
-      const dmUrl = `https://www.tiktok.com/@${creatorId}`;
-      window.open(dmUrl, '_blank');
+    function openDM(id) {
+      // Placeholder for actual DM functionality
+      // For now, just open the profile
+      window.open(`https://www.tiktok.com/@${id}`, '_blank');
     }
 
     async function sendMessage(creatorId, creatorName, btn) {
@@ -550,10 +572,16 @@ ${creatorName} 님이 눈에 들어와서 메세지 드렸습니다.
         const isVerified = s.verified_status === 'available';
         const verifiedBadge = isVerified ? '<span class="verified-badge">✓ 사용 가능</span>' : '';
 
+        // Safe strings for onclick
+        const safeNick = displayNick.replace(/'/g, "\\'");
+
+        // Message button logic
         const messageButton = isVerified ?
-          `<button class="btn-small dm-button" onclick="sendMessage('${s.id}', '${displayNick.replace(/'/g, "\\'")}', this)">
+          `<div style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 10px;">
+             <button class="btn-small dm-button" onclick="sendMessage('${s.id}', '${safeNick}', this)">
                 💬 메세지 보내기
-             </button>` : '';
+             </button>
+           </div>` : '';
 
         card.innerHTML = `
               <div class="card-header">
@@ -583,24 +611,27 @@ ${creatorName} 님이 눈에 들어와서 메세지 드렸습니다.
               </div>
 
               <div class="action-row">
-                  <button class="btn-small btn-outline" onclick='copyMessage(${JSON.stringify(s)}, this)'>
-                      멘트 복사하기
+                  <button class="btn-small btn-outline" onclick="copyMessage('${s.id}', '${safeNick}', this)" style="margin-right: 5px;">
+                      멘트 복사
                   </button>
-                  <div style="flex:1">
+                  <button class="btn-small btn-outline" onclick="copyMessageEn('${s.id}', '${safeNick}', this)">
+                      (ENG) 복사
+                  </button>
+                  <div style="flex:1"></div>
+                  <div style="flex:1; text-align:right;">
                       ${isVerified ?
             `<button class="btn-small primary" onclick="openDM('${s.id}')" style="width:100%">
                               프로필 확인
                            </button>` :
             `<a href="https://www.tiktok.com/@${s.id}/live" target="_blank" style="display:block; width:100%">
-                              <button class="btn-small primary" style="width:100%">
-                                  라이브 가기
+                              라이브 가기
                               </button>
                            </a>`
           }
                   </div>
               </div>
               
-              ${messageButton ? '<div style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 10px;">' + messageButton + '</div>' : ''}
+              ${messageButton}
           `;
         return card;
       };
@@ -615,7 +646,7 @@ ${creatorName} 님이 눈에 들어와서 메세지 드렸습니다.
         header.style.fontWeight = 'bold';
         header.style.borderBottom = '1px solid rgba(0, 242, 234, 0.2)';
         header.style.marginBottom = '10px';
-        header.innerHTML = `✨ 사용 가능 크리에이터 (${available.length}명)`;
+        header.innerHTML = `✨ 사용 가능 크리에이터(${available.length}명)`;
         grid.appendChild(header);
 
         available.forEach(s => {
@@ -633,7 +664,7 @@ ${creatorName} 님이 눈에 들어와서 메세지 드렸습니다.
         divider.style.borderTop = '2px dashed rgba(255, 255, 255, 0.1)';
         divider.style.textAlign = 'center';
         divider.style.color = '#8a8b98';
-        divider.innerHTML = `⛔️ 사용 불가 / 미검증 (${others.length}명)`;
+        divider.innerHTML = `⛔️ 사용 불가 / 미검증(${others.length}명)`;
         grid.appendChild(divider);
 
         others.forEach(s => {

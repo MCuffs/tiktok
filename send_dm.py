@@ -25,6 +25,8 @@ async def send_dm(handle, message):
                 "--no-default-browser-check",
                 "--ignore-certificate-errors",
                 "--disable-blink-features=AutomationControlled",
+                "--window-size=500,600",
+                "--window-position=5000,5000"
             ],
             "viewport": {"width": 1280, "height": 800},
             "ignore_default_args": ["--enable-automation"],

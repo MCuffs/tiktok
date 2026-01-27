@@ -91,7 +91,7 @@ def run_verify_job(job_id):
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/streamers':
+        if self.path.startswith('/streamers'):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()

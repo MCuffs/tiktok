@@ -60,21 +60,25 @@ async def verify_creators_on_backstage(headless=False):
         chrome_path = None
 
     async with async_playwright() as p:
+        # Launch options - Using persistent context to keep login session
         args = [
             "--no-first-run",
-            "--no-default-browser-check",
-            "--ignore-certificate-errors",
             "--disable-blink-features=AutomationControlled",
+            "--window-size=500,600",
+            "--window-position=5000,5000"
         ]
+        
         launch_args = {
             "user_data_dir": USER_DATA_DIR,
-            "headless": headless,
+            "headless": False, 
             "args": args,
-            "viewport": {"width": 1920, "height": 1080},
-            "ignore_default_args": ["--enable-automation"],
+            "viewport": {'width': 1280, 'height': 800},
         }
-        if chrome_path:
-            launch_args["executable_path"] = chrome_path
+
+        # Check for Chrome executable
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.exists(chrome_path):
+             launch_args["executable_path"] = chrome_path
 
         context = await p.chromium.launch_persistent_context(**launch_args)
         page = context.pages[0] if context.pages else await context.new_page()
