@@ -8,259 +8,247 @@ import time
 import uuid
 import urllib.parse
 
-PORT = 8000
-DIRECTORY = "."
-VERIFY_TIMEOUT_SECONDS = 1800
-JOBS_DIR = "verification_jobs"
-LOG_FILE = "verification_jobs.log"
-JOBS = {}
+PORT = 8091
+PENDING_FILE = "pending_creators.json"
+VERIFIED_FILE = "verified_creators.json"
+LOG_FILE = "server.log"
+
+VERIFY_PROCESS = None
+CLIPPER_PROCESS = None
 
 
-def ensure_jobs_dir():
-    os.makedirs(JOBS_DIR, exist_ok=True)
-
-
-def log_line(message):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{timestamp}] {message}\n"
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    line = f"[{timestamp}] {msg}"
+    print(line)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(line)
+        f.write(line + "\n")
 
 
-def job_path(job_id):
-    return os.path.join(JOBS_DIR, f"{job_id}.json")
-
-
-def save_job(job_id, payload):
-    ensure_jobs_dir()
-    with open(job_path(job_id), "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-
-def load_job(job_id):
-    if job_id in JOBS:
-        return JOBS[job_id]
-    path = job_path(job_id)
-    if os.path.exists(path):
+def load_json(filepath, default=None):
+    if default is None:
+        default = []
+    if os.path.exists(filepath):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            return None
-    return None
+        except:
+            pass
+    return default
 
 
-def run_verify_job(job_id):
-    job = JOBS[job_id]
-    job["status"] = "running"
-    job["started_at"] = time.time()
-    save_job(job_id, job)
-    log_line(f"verify start job_id={job_id}")
+def save_json(filepath, data):
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    try:
-        process = subprocess.Popen(
-            ["python3", "verify_creators.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        job["pid"] = process.pid
-        save_job(job_id, job)
-
-        stdout, stderr = process.communicate(timeout=VERIFY_TIMEOUT_SECONDS)
-        job["exit_code"] = process.returncode
-        job["stdout"] = stdout
-        job["stderr"] = stderr
-        job["finished_at"] = time.time()
-
-        if process.returncode == 0:
-            job["status"] = "success"
-        else:
-            job["status"] = "error"
-    except subprocess.TimeoutExpired:
-        job["status"] = "timeout"
-        job["finished_at"] = time.time()
-        job["stderr"] = (job.get("stderr") or "") + "Verification timed out."
-    except Exception as e:
-        job["status"] = "error"
-        job["finished_at"] = time.time()
-        job["stderr"] = str(e)
-
-    save_job(job_id, job)
-    log_line(f"verify end job_id={job_id} status={job['status']}")
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+
+    def send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self):
-        if self.path.startswith('/streamers'):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        # Get pending creators
+        if path == "/pending":
+            data = load_json(PENDING_FILE, [])
+            self.send_json({"creators": data})
+
+        # Get verified creators
+        elif path == "/verified":
+            data = load_json(VERIFIED_FILE, {"available": [], "unavailable": []})
+            self.send_json(data)
+
+        # Get all creators (combined view)
+        elif path == "/creators":
+            pending = load_json(PENDING_FILE, [])
+            verified = load_json(VERIFIED_FILE, {"available": [], "unavailable": []})
+
+            all_creators = []
+
+            # Add pending
+            for c in pending:
+                creator = {
+                    "id": c["id"],
+                    "status": "pending",
+                    "added_at": c.get("added_at", 0)
+                }
+                if c.get("nickname"):
+                    creator["nickname"] = c["nickname"]
+                all_creators.append(creator)
+
+            # Add verified (available) - support both formats
+            available_list = verified.get("available", []) or verified.get("available_creators", [])
+            for c in available_list:
+                all_creators.append({
+                    "id": c["id"],
+                    "status": "available",
+                    "reason": c.get("reason", "사용 가능"),
+                    "verified_at": c.get("verified_at", 0)
+                })
+
+            # Add verified (unavailable) - support both formats
+            unavailable_list = verified.get("unavailable", []) or verified.get("unavailable_creators", [])
+            for c in unavailable_list:
+                all_creators.append({
+                    "id": c["id"],
+                    "status": "unavailable",
+                    "reason": c.get("reason", ""),
+                    "verified_at": c.get("verified_at", 0)
+                })
+
+            # Sort: available first, then by time (newest first)
+            def get_sort_key(x):
+                # Priority: available=0, pending=1, unavailable=2
+                status_priority = {"available": 0, "pending": 1, "unavailable": 2}
+                priority = status_priority.get(x.get("status"), 1)
+
+                # Time value
+                val = x.get("added_at") or x.get("verified_at") or 0
+                if isinstance(val, str):
+                    val = 0
+
+                return (priority, -val)  # Sort by priority first, then newest
+            all_creators.sort(key=get_sort_key)
+
+            self.send_json({"creators": all_creators})
+
+        # Clipper status
+        elif path == "/clipper/status":
+            running = CLIPPER_PROCESS and CLIPPER_PROCESS.poll() is None
+            self.send_json({"running": running})
+
+        # Verify status
+        elif path == "/verify/status":
+            running = VERIFY_PROCESS and VERIFY_PROCESS.poll() is None
+            self.send_json({"running": running})
+
+        # Logs
+        elif path == "/logs":
             self.send_response(200)
-            self.send_header('Content-type', 'application/json')
+            self.send_header("Content-type", "text/plain; charset=utf-8")
             self.end_headers()
-            
-            streamers_data = []
-            verified_creators_map = {}
-            
-            # Load verified creators if available
-            if os.path.exists('verified_creators.json'):
+            content = ""
+            if os.path.exists(LOG_FILE):
                 try:
-                    with open('verified_creators.json', 'r', encoding='utf-8') as f:
-                        verification_data = json.load(f)
-                        for creator in verification_data.get('available_creators', []):
-                            verified_creators_map[creator['id']] = creator
+                    with open(LOG_FILE, "r", encoding="utf-8") as f:
+                        f.seek(0, os.SEEK_END)
+                        size = f.tell()
+                        f.seek(max(size - 4096, 0))
+                        content = f.read()
                 except:
-                    pass
-            
-            # Prefer JSON file
-            if os.path.exists('streamers_data.json'):
-                try:
-                    with open('streamers_data.json', 'r', encoding='utf-8') as f:
-                        streamers_data = json.load(f)
-                        # Add verification status to each streamer
-                        for streamer in streamers_data:
-                            if streamer['id'] in verified_creators_map:
-                                streamer['verified_status'] = 'available'
-                            else:
-                                streamer['verified_status'] = 'unverified'
-                except:
-                    pass
-            # Fallback to text file (convert to objects)
-            elif os.path.exists('active_streamers.txt'):
-                 with open('active_streamers.txt', 'r') as f:
-                    for line in f:
-                        if line.strip():
-                            streamer = {"id": line.strip(), "nickname": line.strip(), "followers": "-", "likes": "-", "verified_status": "unverified"}
-                            if line.strip() in verified_creators_map:
-                                streamer['verified_status'] = 'available'
-                            streamers_data.append(streamer)
-            
-            self.wfile.write(json.dumps({"streamers": streamers_data}).encode())
-        
-        elif self.path == '/verified':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            verified_data = {"available_creators": []}
-            
-            # Load verified creators if available
-            if os.path.exists('verified_creators.json'):
-                try:
-                    with open('verified_creators.json', 'r', encoding='utf-8') as f:
-                        verified_data = json.load(f)
-                except:
-                    pass
-            
-            self.wfile.write(json.dumps(verified_data).encode())
+                    content = "Error reading logs"
+            self.wfile.write(content.encode())
 
-        elif self.path.startswith('/verify/status'):
-            parsed = urllib.parse.urlparse(self.path)
-            params = urllib.parse.parse_qs(parsed.query)
-            job_id = (params.get("job_id") or [None])[0]
-
-            if not job_id:
-                self.send_error(400, "Missing job_id")
-                return
-
-            job = load_job(job_id)
-            if not job:
-                self.send_error(404, "Unknown job_id")
-                return
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"job": job}).encode())
-        
         else:
             super().do_GET()
 
     def do_POST(self):
-        if self.path == '/crawl':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            # Run the crawler script in headless mode (background)
-            try:
-                
-                print("Running crawler...")
-                subprocess.run(["python3", "crawler.py", "--headless"], check=True)
-                
-                self.wfile.write(json.dumps({"status": "success", "message": "Crawling finished"}).encode())
-            except Exception as e:
-                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode())
-        
-        elif self.path == '/verify':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            # Run the verification script (opens browser for interactive verification)
-            try:
-                print("Starting creator verification on backstage...")
-                job_id = uuid.uuid4().hex
-                job = {
-                    "job_id": job_id,
-                    "status": "queued",
-                    "created_at": time.time(),
-                    "started_at": None,
-                    "finished_at": None,
-                    "exit_code": None,
-                    "stdout": "",
-                    "stderr": "",
-                    "pid": None,
-                }
-                JOBS[job_id] = job
-                save_job(job_id, job)
+        global CLIPPER_PROCESS, VERIFY_PROCESS
 
-                thread = threading.Thread(target=run_verify_job, args=(job_id,), daemon=True)
-                thread.start()
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
 
-                self.wfile.write(json.dumps({
-                    "status": "success",
-                    "job_id": job_id,
-                    "message": "Verification started. A browser window will open for manual verification.",
-                }).encode())
-            except Exception as e:
-                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode())
-
-        elif self.path == '/send_dm':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data)
-            
-            handle = data.get("handle")
-            message = data.get("message")
-            
-            if not handle or not message:
-                self.wfile.write(json.dumps({"status": "error", "message": "Missing handle or message"}).encode())
+        # Start clipper
+        if path == "/clipper/start":
+            if CLIPPER_PROCESS and CLIPPER_PROCESS.poll() is None:
+                self.send_json({"status": "error", "message": "Already running"})
                 return
 
-            try:
-                print(f"Requesting DM send to @{handle}...")
-                # Run the send_dm.py script
-                # We use subprocess.run to wait for it (synchronous for simpler error handling)
-                # Headed mode is default in the script.
-                result = subprocess.run(
-                    ["python3", "send_dm.py", handle, message],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode == 0:
-                    self.wfile.write(json.dumps({"status": "success", "message": "Message process completed."}).encode())
-                else:
-                    self.wfile.write(json.dumps({"status": "error", "message": f"Script failed: {result.stdout} {result.stderr}"}).encode())
-            
-            except Exception as e:
-                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode())
-        
+            log("Starting clipper bot...")
+            CLIPPER_PROCESS = subprocess.Popen(
+                ["python3", "clipper_bot.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+            self.send_json({"status": "success", "message": "Clipper started"})
+
+        # Stop clipper
+        elif path == "/clipper/stop":
+            if CLIPPER_PROCESS and CLIPPER_PROCESS.poll() is None:
+                CLIPPER_PROCESS.terminate()
+                CLIPPER_PROCESS = None
+                self.send_json({"status": "success", "message": "Clipper stopped"})
+            else:
+                self.send_json({"status": "error", "message": "Not running"})
+
+        # Start verification
+        elif path == "/verify":
+            if VERIFY_PROCESS and VERIFY_PROCESS.poll() is None:
+                self.send_json({"status": "error", "message": "Verification already running"})
+                return
+
+            pending = load_json(PENDING_FILE, [])
+            if not pending:
+                self.send_json({"status": "error", "message": "No pending creators"})
+                return
+
+            log(f"Starting verification for {len(pending)} creators...")
+            VERIFY_PROCESS = subprocess.Popen(
+                ["python3", "verify_batch.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+            self.send_json({"status": "success", "message": f"Verifying {len(pending)} creators"})
+
+        # Clear all
+        elif path == "/clear":
+            save_json(PENDING_FILE, [])
+            save_json(VERIFIED_FILE, {"available": [], "unavailable": []})
+            self.send_json({"status": "success", "message": "Cleared all"})
+
+        # Login
+        elif path == "/login":
+            log("Opening login browser...")
+            subprocess.Popen(["python3", "setup_login.py"])
+            self.send_json({"status": "success", "message": "Login browser opened"})
+
         else:
             self.send_error(404)
 
-print(f"Server started at http://localhost:{PORT}")
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    httpd.serve_forever()
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        # Delete specific creator
+        if path.startswith("/pending/"):
+            creator_id = path.replace("/pending/", "")
+            pending = load_json(PENDING_FILE, [])
+            pending = [c for c in pending if c["id"] != creator_id]
+            save_json(PENDING_FILE, pending)
+            self.send_json({"status": "success", "message": f"Deleted {creator_id}"})
+
+        elif path.startswith("/verified/"):
+            creator_id = path.replace("/verified/", "")
+            verified = load_json(VERIFIED_FILE, {"available": [], "unavailable": []})
+            verified["available"] = [c for c in verified["available"] if c["id"] != creator_id]
+            verified["unavailable"] = [c for c in verified["unavailable"] if c["id"] != creator_id]
+            save_json(VERIFIED_FILE, verified)
+            self.send_json({"status": "success", "message": f"Deleted {creator_id}"})
+
+        else:
+            self.send_error(404)
+
+
+if __name__ == "__main__":
+    # Clear log on start
+    with open(LOG_FILE, "w") as f:
+        f.write("")
+
+    log(f"Server starting on http://localhost:{PORT}")
+
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        httpd.serve_forever()

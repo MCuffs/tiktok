@@ -1,693 +1,548 @@
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>티톡 라이브 대시보드</title>
+  <title>Arthurian Scout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
   <style>
     :root {
-      --bg-color: #0f0f12;
-      --card-bg: #1c1c24;
-      --primary: #ff0050;
-      /* TikTok Red/Pink */
-      --secondary: #00f2ea;
-      /* TikTok Cyan */
-      --text-main: #ffffff;
-      --text-muted: #8a8b98;
+      --bg-main: #0B0E14;
+      --bg-card: #151A23;
+      --bg-card-hover: #1E232F;
+      --accent: #6366F1;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --error: #EF4444;
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --border: rgba(255,255,255,0.08);
     }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      background-color: var(--bg-color);
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-main);
       color: var(--text-main);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px;
+      min-height: 100vh;
     }
 
+    /* Header */
     header {
-      width: 100%;
-      max-width: 900px;
-      margin-bottom: 40px;
+      background: rgba(11,14,20,0.95);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
     }
-
-    h1 {
-      font-size: 2rem;
-      font-weight: 800;
-      background: linear-gradient(to right, var(--secondary), var(--text-main), var(--primary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      /* standard propery */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-
+    .brand-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), #EC4899);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
     .controls {
       display: flex;
       gap: 12px;
+      align-items: center;
     }
 
-    button {
-      background-color: var(--card-bg);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: var(--text-main);
-      padding: 12px 24px;
-      border-radius: 8px;
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-muted);
       cursor: pointer;
-      font-weight: 600;
-      transition: all 0.2s ease;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: var(--bg-card-hover);
+      color: var(--text-main);
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: #5558E6; }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-success {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+    .btn.active {
+      background: rgba(16,185,129,0.15);
+      color: var(--success);
+      border-color: rgba(16,185,129,0.3);
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+    }
+
+    /* Stats Bar */
+    .stats-bar {
+      display: flex;
+      gap: 24px;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(21,26,35,0.5);
+    }
+    .stat {
       display: flex;
       align-items: center;
       gap: 8px;
     }
-
-    button:hover {
-      background-color: #2a2a35;
-      transform: translateY(-1px);
-    }
-
-    button.primary {
-      background-color: var(--primary);
-      border-color: var(--primary);
-      box-shadow: 0 4px 15px rgba(255, 0, 80, 0.3);
-    }
-
-    button.primary:hover {
-      background-color: #d60043;
-      box-shadow: 0 6px 20px rgba(255, 0, 80, 0.4);
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    main {
-      width: 100%;
-      max-width: 900px;
-    }
-
-    .status-bar {
-      margin-bottom: 20px;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid var(--text-muted);
-      border-top: 2px solid var(--primary);
+    .stat-dot {
+      width: 10px; height: 10px;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      display: none;
+    }
+    .stat-dot.pending { background: var(--text-muted); }
+    .stat-dot.available { background: var(--success); }
+    .stat-dot.unavailable { background: var(--error); }
+    .stat-label { color: var(--text-muted); font-size: 0.85rem; }
+    .stat-value { font-weight: 600; font-size: 1.1rem; }
+
+    /* Main Content */
+    main {
+      padding: 24px 32px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
-    @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
-
-      100% {
-        transform: rotate(360deg);
-      }
-    }
-
-    .card-grid {
+    /* Creator Grid */
+    .creator-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 16px;
     }
 
-    .streamer-card {
-      background-color: var(--card-bg);
-      border-radius: 12px;
+    /* Creator Card */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
       padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      transition: transform 0.2s ease;
+      transition: all 0.2s;
       position: relative;
+      overflow: hidden;
     }
-
-    .streamer-card:hover {
+    .card:hover {
+      border-color: rgba(255,255,255,0.15);
       transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.1);
     }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 4px; height: 100%;
+      background: var(--text-muted);
+    }
+    .card.pending::before { background: var(--text-muted); }
+    .card.available::before { background: var(--success); }
+    .card.available {
+      border-color: rgba(16,185,129,0.3);
+      background: linear-gradient(90deg, rgba(16,185,129,0.05), transparent);
+    }
+    .card.unavailable::before { background: var(--error); }
+    .card.unavailable { opacity: 0.7; }
 
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
+      margin-bottom: 12px;
     }
-
-    .streamer-info h3 {
+    .card-id {
       font-size: 1.1rem;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .streamer-id-display {
-      font-size: 0.9rem;
-      color: var(--text-muted);
+      font-weight: 600;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: color 0.2s;
-    }
-
-    .streamer-id-display:hover {
-      color: var(--secondary);
-    }
-
-    .stats-row {
       display: flex;
-      gap: 15px;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-id:hover { color: var(--accent); }
+    .card-id .material-symbols-rounded {
+      font-size: 16px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .card-id:hover .material-symbols-rounded { opacity: 1; }
+
+    .card-status {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .card-status.pending {
+      background: rgba(156,163,175,0.15);
+      color: var(--text-muted);
+    }
+    .card-status.available {
+      background: rgba(16,185,129,0.15);
+      color: var(--success);
+    }
+    .card-status.unavailable {
+      background: rgba(239,68,68,0.15);
+      color: var(--error);
+    }
+
+    .card-reason {
       font-size: 0.85rem;
       color: var(--text-muted);
-      margin-top: 8px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 12px;
     }
 
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .stat-val {
-      font-weight: 700;
-      color: var(--text-main);
-      font-size: 1rem;
-    }
-
-    .action-row {
-      margin-top: auto;
-      padding-top: 15px;
+    .card-actions {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
-    .btn-small {
-      padding: 8px 12px;
-      font-size: 0.8rem;
-      flex: 1;
-      justify-content: center;
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state .material-symbols-rounded {
+      font-size: 64px;
+      opacity: 0.3;
+      margin-bottom: 16px;
+    }
+    .empty-state p {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .empty-state small {
+      opacity: 0.7;
     }
 
-    .btn-outline {
-      background: transparent;
-      border: 1px solid var(--text-muted);
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1F2937;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 99px;
+      font-size: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      z-index: 1000;
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translate(-50%, 20px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
     }
 
-    .btn-outline:hover {
-      border-color: var(--text-main);
-      background: rgba(255, 255, 255, 0.05);
+    /* Loading Spinner */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }
-
-    .verified-badge {
-      display: inline-block;
-      background: linear-gradient(135deg, #00f2ea, #00d4ff);
-      color: #000;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      margin-left: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .streamer-name-link {
-      cursor: pointer;
-      color: var(--secondary);
-      text-decoration: none;
-      transition: all 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .streamer-name-link:hover {
-      color: var(--primary);
-      text-decoration: underline;
-    }
-
-    .dm-button {
-      padding: 6px 12px;
-      font-size: 0.75rem;
-      background: linear-gradient(135deg, #00f2ea, #00d4ff);
-      border: none;
-      color: #000;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 700;
-      transition: all 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .dm-button:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 12px rgba(0, 242, 234, 0.3);
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
-
 <body>
-
   <header>
-    <h1>TikTok Live Monitor</h1>
+    <div class="brand">
+      <div class="brand-icon">
+        <span class="material-symbols-rounded" style="color:white">radar</span>
+      </div>
+      <h1>Arthurian Scout</h1>
+    </div>
     <div class="controls">
-      <button id="refreshBtn">목록 새로고침</button>
-      <button id="copyBtn">전체 ID 복사</button>
-      <button id="fullProcessBtn" class="primary"
-        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
-        <span>⚡️ 전 과정 수행</span>
+      <button class="btn" id="clipperBtn" onclick="toggleClipper()">
+        <span class="material-symbols-rounded">content_paste</span>
+        <span id="clipperText">Start Clipper</span>
       </button>
-      <button id="verifyBtn" class="primary">
-        <span>🔍 크리에이터 검증</span>
+      <button class="btn btn-primary" id="verifyBtn" onclick="startVerify()">
+        <span class="material-symbols-rounded">verified</span>
+        <span id="verifyText">Verify All</span>
       </button>
-      <button id="crawlBtn" class="primary">
-        <span>크리에이터 불러오기</span>
+      <button class="btn" onclick="clearAll()">
+        <span class="material-symbols-rounded">delete</span>
       </button>
     </div>
   </header>
 
-  <main>
-    <div class="status-bar">
-      <div class="spinner" id="spinner"></div>
-      <span id="statusText">준비됨</span>
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-dot pending"></div>
+      <span class="stat-label">Pending</span>
+      <span class="stat-value" id="countPending">0</span>
     </div>
+    <div class="stat">
+      <div class="stat-dot available"></div>
+      <span class="stat-label">Available</span>
+      <span class="stat-value" id="countAvailable">0</span>
+    </div>
+    <div class="stat">
+      <div class="stat-dot unavailable"></div>
+      <span class="stat-label">Unavailable</span>
+      <span class="stat-value" id="countUnavailable">0</span>
+    </div>
+  </div>
 
-    <div id="grid" class="card-grid">
-      <!-- Cards will go here -->
-    </div>
+  <main>
+    <div class="creator-grid" id="creatorGrid"></div>
   </main>
 
   <script>
-    const grid = document.getElementById('grid');
-    const statusText = document.getElementById('statusText');
-    const spinner = document.getElementById('spinner');
-    const crawlBtn = document.getElementById('crawlBtn');
-    const verifyBtn = document.getElementById('verifyBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const copyBtn = document.getElementById('copyBtn');
+    let isClipperRunning = false;
+    let isVerifying = false;
 
-    let currentStreamers = [];
+    // Toast notification
+    function showToast(msg) {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
 
-    function setLoading(isLoading, text) {
-      statusText.textContent = text;
-      spinner.style.display = isLoading ? 'block' : 'none';
-      crawlBtn.disabled = isLoading;
-      verifyBtn.disabled = isLoading;
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
     }
 
-    // --- CORE FUNCTIONS ---
-
-    async function loadStreamers() {
-      try {
-        const res = await fetch('/streamers?t=' + new Date().getTime());
-        const data = await res.json();
-
-        // Limit to 50
-        const limited = data.streamers.slice(0, 50);
-        currentStreamers = limited;
-
-        renderCards(limited);
-
-        const verified = limited.filter(s => s.verified_status === 'available').length;
-        setLoading(false, `총 ${limited.length}명의 크리에이터를 불러왔습니다. (검증됨: ${verified}명)`);
-      } catch (e) {
-        setLoading(false, '목록 불러오기 실패');
-        console.error(e);
-      }
+    // Copy to clipboard
+    function copyId(id) {
+      navigator.clipboard.writeText(id);
+      showToast(`Copied: @${id}`);
     }
 
-    async function startCrawl() {
-      setLoading(true, '크롤링 진행 중... (시간이 조금 걸립니다)');
-      try {
-        const res = await fetch('/crawl', { method: 'POST' });
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`Server Error: ${res.status} ${text}`);
-        }
-
-        const data = await res.json();
-
-        if (data.status === 'success') {
-          setLoading(false, '크롤링 완료!');
-          // Wait a bit more for file system to sync
-          await new Promise(resolve => setTimeout(resolve, 4000));
-          await loadStreamers();
-          return true;
-        } else {
-          setLoading(false, '크롤링 오류 발생: ' + (data.message || JSON.stringify(data)));
-          return false;
-        }
-      } catch (e) {
-        setLoading(false, '실패: ' + e.message);
-        console.error(e);
-        return false;
-      }
-    }
-
-    async function startFullProcess() {
-      if (!confirm("⚠️ [크롤링 -> 검증] 전 과정을 자동으로 수행합니다.\n\n약 5~10분 정도 소요되며, 검증 단계에서 브라우저가 열립니다.\n진행하시겠습니까?")) {
-        return;
-      }
-
-      // 1. Crawl
-      console.log("Starting full process: Step 1 (Crawl)");
-      const crawlSuccess = await startCrawl();
-      if (!crawlSuccess) {
-        alert("❌ 크롤링 단계에서 실패하여 작업을 중단합니다.");
-        return;
-      }
-
-      // Short pause
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 2. Verify
-      console.log("Starting full process: Step 2 (Verify)");
-      // We call startVerification but we need to make sure we don't double confirm or anything.
-      // startVerification has checks.
-      // Also startVerification handles its own loading state.
-      await startVerification();
-    }
-
-    async function startVerification() {
-      if (!currentStreamers || currentStreamers.length === 0) {
-        alert("먼저 크리에이터를 불러와주세요.");
-        return;
-      }
-
-      setLoading(true, '✅ 검증 시작! 자동으로 백스테이지 페이지가 열리고 진행됩니다...');
-
-      try {
-        const res = await fetch('/verify', { method: 'POST' });
-        const data = await res.json();
-
-        if (data.status === 'success') {
-          // Start polling for results
-          let checkCount = 0;
-          const checkInterval = setInterval(async () => {
-            checkCount++;
-
-            // Check every 5 seconds
-            const res = await fetch('/streamers');
-            const data = await res.json();
-            const verified = data.streamers.filter(s => s.verified_status === 'available').length;
-
-            if (verified > 0) {
-              // Found results!
-              clearInterval(checkInterval);
-              loadStreamers(); // This triggers re-render, which now sorts by verified status
-              setLoading(false, `✅ 검증 완료! ${verified}명의 '사용 가능' 크리에이터를 찾았습니다.`);
-              alert(`🎉 검증 완료!\n\n✓ 사용 가능 크리에이터: ${verified}명\n\n자동으로 상단에 정렬되었습니다.\n카드에서 '메세지 보내기' 버튼으로 연락할 수 있습니다.`);
-            } else if (checkCount > 120) {
-              // Stop after 10 minutes
-              clearInterval(checkInterval);
-              setLoading(false, '⏱️  검증 시간 초과. 백스테이지에서 수동으로 진행해주세요.');
-            } else {
-              setLoading(true, `⏳ 검증 중... (${checkCount * 5}초)`);
-            }
-          }, 5000);
-        } else {
-          setLoading(false, '❌ 검증 오류: ' + data.message);
-        }
-      } catch (e) {
-        setLoading(false, '❌ 서버 요청 실패');
-        console.error(e);
-      }
-    }
-
-    function copyAll() {
-      if (!currentStreamers || currentStreamers.length === 0) {
-        alert("복사할 크리에이터가 없습니다.");
-        return;
-      }
-      // ID only, no @
-      const textToCopy = currentStreamers.map(s => s.id).join('\n');
-      copyToClipboard(textToCopy, copyBtn);
-    }
-
-    function copyId(id, btnElement) {
-      copyToClipboard(id, btnElement, "ID 복사됨!");
-    }
-
-    function copyMessage(id, nickname, btnElement) {
-      const name = nickname || id;
-      const message = `[크리에이터 제안]
+    // Copy Korean message
+    function copyKR(id) {
+      const text = `[크리에이터 제안]
 안녕하세요, 아서리안 스튜디오 입니다.
-저희는 딱 10명의 잠재성을 지닌 크리에이터를 발굴 하여 팀을 꾸려가고 있습니다
+저희는 딱 10명의 잠재성을 지닌 크리에이터를 발굴 하여 팀을 꾸려가고 있는데요!
 
-${name} 님께 참여를 제안드려보고 싶어서 안내 드립니다.
+${id}님께 참여를 제안드려보고 싶어서 안내 드립니다.
 
-아서리안만의 특별 인센티브나 채널 성장에 대해 대화 나눠보시면 좋을듯 합니다 : )`;
+아서리안만의 특별 인센티브나 채널 성장에 대해 대화 나눠보시면 좋을듯 합니다 : )
 
-      copyToClipboard(message, btnElement, "멘트 복사됨!");
+공식 홈페이지 주소입니다 ! - https://www.arthrian.cloud/benefit`;
+      navigator.clipboard.writeText(text);
+      showToast('Korean message copied!');
     }
 
-    function copyMessageEn(id, nickname, btnElement) {
-      const name = nickname || id;
-      const message = `[Creator Proposal]
-Hello, this is Arthurian Studio.
-We are building a selected team of just 10 high-potential creators.
-
-We are reaching out because we'd like to invite you, ${name}, to join us.
-
-We would love to discuss Arthurian's exclusive incentives and channel growth strategies with you : )`;
-
-      copyToClipboard(message, btnElement, "(ENG) 복사됨!");
+    // Copy English message
+    function copyEN(id) {
+      const text = `[Arthurian Studio]
+Hello ${id}, we'd like to invite you to our exclusive creator team.
+Check our benefits: https://www.arthrian.cloud/benefit`;
+      navigator.clipboard.writeText(text);
+      showToast('English message copied!');
     }
 
-    function copyToClipboard(text, btnElement, successText = "복사됨!") {
-      navigator.clipboard.writeText(text).then(() => {
-        const originalText = btnElement.textContent;
-        btnElement.textContent = successText;
-        setTimeout(() => {
-          btnElement.textContent = originalText;
-        }, 1500);
-      }).catch(err => {
-        console.error('Failed to copy: ', err);
-        alert('클립보드 복사 실패!');
-      });
+    // Delete creator
+    async function deleteCreator(id, status) {
+      const endpoint = status === 'pending' ? `/pending/${id}` : `/verified/${id}`;
+      await fetch(endpoint, { method: 'DELETE' });
+      loadCreators();
     }
 
-    function openDM(id) {
-      // Placeholder for actual DM functionality
-      // For now, just open the profile
-      window.open(`https://www.tiktok.com/@${id}`, '_blank');
-    }
+    // Render creators
+    function renderCreators(creators) {
+      const grid = document.getElementById('creatorGrid');
 
-    async function sendMessage(creatorId, creatorName, btn) {
-      if (!confirm(`'${creatorName}'님에게 자동으로 메세지를 발송하시겠습니까?\n\n주의: 브라우저가 열리고 자동으로 진행됩니다.`)) {
-        return;
-      }
-
-      // Message text
-      const message = `[크리에이터 제안]
-안녕하세요! 트렌드웨이브 입니다.
-저희는 성장성 있고 잠재성을 지닌 크리에이터를 발굴해서 팀을 꾸려가고 있는데요!
-
-${creatorName} 님이 눈에 들어와서 메세지 드렸습니다.
-
-협업 매치나 추가 협찬 등에 대해 잠깐 대화 나눠보시면 좋을듯 합니다 :)`;
-
-      // UI Loading state
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳ 전송 중...';
-      btn.disabled = true;
-
-      try {
-        const res = await fetch('/send_dm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            handle: creatorId,
-            message: message
-          })
-        });
-        const data = await res.json();
-
-        if (data.status === 'success') {
-          alert(`✅ 메세지 전송 완료! (@${creatorId})`);
-          btn.innerHTML = '✅ 전송됨';
-        } else {
-          alert(`❌ 전송 실패: ${data.message}`);
-          btn.innerHTML = originalText;
-          btn.disabled = false;
-        }
-      } catch (e) {
-        console.error(e);
-        alert('❌ 서버 통신 오류');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-      }
-    }
-
-    function renderCards(streamers) {
-      grid.innerHTML = '';
-
-      if (!streamers || streamers.length === 0) {
+      if (!creators.length) {
         grid.innerHTML = `
-                    <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 40px; background: #1c1c24; border-radius: 12px;">
-                        수집된 크리에이터가 없습니다.<br>
-                        '크리에이터 불러오기' 버튼을 눌러주세요.
-                    </div>
-                `;
+          <div class="empty-state" style="grid-column: 1/-1;">
+            <span class="material-symbols-rounded">person_search</span>
+            <p>No creators yet</p>
+            <small>Start Clipper and copy TikTok URLs to add creators</small>
+          </div>
+        `;
         return;
       }
 
-      // Separate verified (available) and others
-      const available = streamers.filter(s => s.verified_status === 'available');
-      const others = streamers.filter(s => s.verified_status !== 'available');
+      grid.innerHTML = creators.map(c => {
+        const statusClass = c.status;
+        const statusText = c.status === 'pending' ? 'Pending' :
+                          c.status === 'available' ? 'Available' : 'Unavailable';
 
-      // Helper to create card HTML element
-      const createCard = (s) => {
-        const card = document.createElement('div');
-        card.className = 'streamer-card';
-
-        const displayNick = (s.nickname && s.nickname !== s.id) ? s.nickname : s.id;
-        const isVerified = s.verified_status === 'available';
-        const verifiedBadge = isVerified ? '<span class="verified-badge">✓ 사용 가능</span>' : '';
-
-        // Safe strings for onclick
-        const safeNick = displayNick.replace(/'/g, "\\'");
-
-        // Message button logic
-        const messageButton = isVerified ?
-          `<div style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 10px;">
-             <button class="btn-small dm-button" onclick="sendMessage('${s.id}', '${safeNick}', this)">
-                💬 메세지 보내기
-             </button>
-           </div>` : '';
-
-        card.innerHTML = `
-              <div class="card-header">
-                  <div class="streamer-info">
-                      <h3>
-                          <span class="streamer-name-link" onclick="openDM('${s.id}')" title="프로필 보기">
-                              ${displayNick}
-                          </span>
-                          ${verifiedBadge}
-                      </h3>
-                      <div class="streamer-id-display" onclick="copyId('${s.id}', this)">
-                          <span>@${s.id}</span>
-                          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.243a2 2 0 00-.586-1.414l-5-5A2 2 0 0013.071 4H10a2 2 0 00-2 2z"></path></svg>
-                      </div>
-                  </div>
+        return `
+          <div class="card ${statusClass}">
+            <div class="card-header">
+              <div class="card-id" onclick="copyId('${c.id}')">
+                @${c.id}
+                <span class="material-symbols-rounded">content_copy</span>
               </div>
+              <span class="card-status ${statusClass}">${statusText}</span>
+            </div>
+            ${c.nickname ? `<div class="card-nickname" style="font-size:0.9rem;color:var(--text-muted);margin-bottom:8px;">${c.nickname}</div>` : ''}
+            ${c.reason ? `<div class="card-reason">${c.reason}</div>` : ''}
+            <div class="card-actions">
+              <button class="btn btn-sm" onclick="window.open('https://www.tiktok.com/@${c.id}', '_blank')">
+                <span class="material-symbols-rounded" style="font-size:14px">person</span> Profile
+              </button>
+              ${c.status === 'available' ? `
+                <button class="btn btn-sm btn-success" onclick="copyKR('${c.id}')">Copy KR</button>
+                <button class="btn btn-sm" onclick="copyEN('${c.id}')">Copy EN</button>
+              ` : ''}
+              <button class="btn btn-sm" onclick="deleteCreator('${c.id}', '${c.status}')">
+                <span class="material-symbols-rounded" style="font-size:14px">close</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
 
-              <div class="stats-row">
-                  <div class="stat-item">
-                      <span>Followers</span>
-                      <span class="stat-val">${s.followers || '-'}</span>
-                  </div>
-                  <div class="stat-item">
-                      <span>Likes</span>
-                      <span class="stat-val">${s.likes || '-'}</span>
-                  </div>
-              </div>
+    // Update stats
+    function updateStats(creators) {
+      const pending = creators.filter(c => c.status === 'pending').length;
+      const available = creators.filter(c => c.status === 'available').length;
+      const unavailable = creators.filter(c => c.status === 'unavailable').length;
 
-              <div class="action-row">
-                  <button class="btn-small btn-outline" onclick="copyMessage('${s.id}', '${safeNick}', this)" style="margin-right: 5px;">
-                      멘트 복사
-                  </button>
-                  <button class="btn-small btn-outline" onclick="copyMessageEn('${s.id}', '${safeNick}', this)">
-                      (ENG) 복사
-                  </button>
-                  <div style="flex:1"></div>
-                  <div style="flex:1; text-align:right;">
-                      ${isVerified ?
-            `<button class="btn-small primary" onclick="openDM('${s.id}')" style="width:100%">
-                              프로필 확인
-                           </button>` :
-            `<a href="https://www.tiktok.com/@${s.id}/live" target="_blank" style="display:block; width:100%">
-                              라이브 가기
-                              </button>
-                           </a>`
-          }
-                  </div>
-              </div>
-              
-              ${messageButton}
-          `;
-        return card;
-      };
+      document.getElementById('countPending').textContent = pending;
+      document.getElementById('countAvailable').textContent = available;
+      document.getElementById('countUnavailable').textContent = unavailable;
 
-      // 1. Render Available Streamers Section
-      if (available.length > 0) {
-        const header = document.createElement('div');
-        header.style.gridColumn = '1 / -1';
-        header.style.padding = '10px 0';
-        header.style.color = '#00f2ea';
-        header.style.fontSize = '1.2rem';
-        header.style.fontWeight = 'bold';
-        header.style.borderBottom = '1px solid rgba(0, 242, 234, 0.2)';
-        header.style.marginBottom = '10px';
-        header.innerHTML = `✨ 사용 가능 크리에이터(${available.length}명)`;
-        grid.appendChild(header);
+      // Update verify button
+      const verifyBtn = document.getElementById('verifyBtn');
+      verifyBtn.disabled = pending === 0;
+    }
 
-        available.forEach(s => {
-          grid.appendChild(createCard(s));
-        });
-      }
-
-      // 2. Render Divider & Others Section
-      if (others.length > 0) {
-        const divider = document.createElement('div');
-        divider.style.gridColumn = '1 / -1';
-        divider.style.marginTop = '40px';
-        divider.style.marginBottom = '10px';
-        divider.style.paddingTop = '20px';
-        divider.style.borderTop = '2px dashed rgba(255, 255, 255, 0.1)';
-        divider.style.textAlign = 'center';
-        divider.style.color = '#8a8b98';
-        divider.innerHTML = `⛔️ 사용 불가 / 미검증(${others.length}명)`;
-        grid.appendChild(divider);
-
-        others.forEach(s => {
-          grid.appendChild(createCard(s));
-        });
+    // Load creators from API
+    async function loadCreators() {
+      try {
+        const res = await fetch('/creators');
+        const data = await res.json();
+        renderCreators(data.creators || []);
+        updateStats(data.creators || []);
+      } catch (e) {
+        console.error('Failed to load creators:', e);
       }
     }
 
-    // Event Listeners
-    document.getElementById('fullProcessBtn').addEventListener('click', startFullProcess);
-    crawlBtn.addEventListener('click', startCrawl);
-    verifyBtn.addEventListener('click', startVerification);
-    refreshBtn.addEventListener('click', loadStreamers);
-    copyBtn.addEventListener('click', copyAll);
+    // Toggle clipper
+    async function toggleClipper() {
+      const endpoint = isClipperRunning ? '/clipper/stop' : '/clipper/start';
+      await fetch(endpoint, { method: 'POST' });
+      checkStatus();
+    }
 
-    // Initial load
-    loadStreamers();
-    refreshBtn.addEventListener('click', loadStreamers);
-    copyBtn.addEventListener('click', copyAll);
+    // Start verification
+    async function startVerify() {
+      if (isVerifying) return;
 
-    // Initial Load
-    loadStreamers();
+      const res = await fetch('/verify', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        showToast('Verification started...');
+        isVerifying = true;
+        updateVerifyButton();
+      } else {
+        showToast(data.message || 'Error');
+      }
+    }
+
+    // Clear all
+    async function clearAll() {
+      if (!confirm('Clear all creators?')) return;
+      await fetch('/clear', { method: 'POST' });
+      loadCreators();
+      showToast('Cleared all');
+    }
+
+    // Update clipper button
+    function updateClipperButton() {
+      const btn = document.getElementById('clipperBtn');
+      const text = document.getElementById('clipperText');
+
+      if (isClipperRunning) {
+        btn.classList.add('active');
+        text.textContent = 'Clipper Running';
+      } else {
+        btn.classList.remove('active');
+        text.textContent = 'Start Clipper';
+      }
+    }
+
+    // Update verify button
+    function updateVerifyButton() {
+      const btn = document.getElementById('verifyBtn');
+      const text = document.getElementById('verifyText');
+
+      if (isVerifying) {
+        text.innerHTML = '<div class="spinner"></div> Verifying...';
+      } else {
+        text.textContent = 'Verify All';
+      }
+    }
+
+    // Check status
+    async function checkStatus() {
+      try {
+        const [clipperRes, verifyRes] = await Promise.all([
+          fetch('/clipper/status'),
+          fetch('/verify/status')
+        ]);
+
+        const clipperData = await clipperRes.json();
+        const verifyData = await verifyRes.json();
+
+        isClipperRunning = clipperData.running;
+        const wasVerifying = isVerifying;
+        isVerifying = verifyData.running;
+
+        // Reload if verification just finished
+        if (wasVerifying && !isVerifying) {
+          loadCreators();
+          showToast('Verification complete!');
+        }
+
+        updateClipperButton();
+        updateVerifyButton();
+      } catch (e) {
+        console.error('Status check failed:', e);
+      }
+    }
+
+    // Initialize
+    loadCreators();
+    checkStatus();
+    setInterval(loadCreators, 2000);
+    setInterval(checkStatus, 1500);
   </script>
 </body>
-
 </html>
