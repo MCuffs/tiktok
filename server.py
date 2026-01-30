@@ -2,6 +2,7 @@ import http.server
 import socketserver
 import json
 import subprocess
+import sys
 import os
 import threading
 import time
@@ -13,6 +14,7 @@ PENDING_FILE = "pending_creators.json"
 VERIFIED_FILE = "verified_creators.json"
 DM_STATUS_FILE = "dm_status.json"
 LOG_FILE = "server.log"
+PYTHON_EXE = sys.executable
 
 VERIFY_PROCESS = None
 CLIPPER_PROCESS = None
@@ -188,7 +190,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             log("Starting clipper bot...")
             CLIPPER_PROCESS = subprocess.Popen(
-                ["python3", "clipper_bot.py"],
+                [PYTHON_EXE, "clipper_bot.py"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT
             )
@@ -216,7 +218,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             log(f"Starting verification for {len(pending)} creators...")
             VERIFY_PROCESS = subprocess.Popen(
-                ["python3", "verify_batch.py"],
+                [PYTHON_EXE, "verify_batch.py"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT
             )
@@ -230,7 +232,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # Login
         elif path == "/login":
             log("Opening login browser...")
-            subprocess.Popen(["python3", "setup_login.py"])
+            subprocess.Popen([PYTHON_EXE, "setup_login.py"])
             self.send_json({"status": "success", "message": "Login browser opened"})
 
         # Send DM to single creator
@@ -251,7 +253,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
                 log(f"Sending DM to @{handle}...")
                 DM_PROCESS = subprocess.Popen(
-                    ["python3", "send_dm.py", handle, nickname, lang],
+                    [PYTHON_EXE, "send_dm.py", handle, nickname, lang],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT
                 )
@@ -294,7 +296,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     json.dump({"creators": to_dm, "lang": lang}, f, ensure_ascii=False)
 
                 DM_PROCESS = subprocess.Popen(
-                    ["python3", "send_dm_batch.py"],
+                    [PYTHON_EXE, "send_dm_batch.py"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT
                 )

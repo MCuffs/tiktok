@@ -2,6 +2,7 @@ import asyncio
 import sys
 import os
 import json
+import time
 import pyperclip
 from datetime import datetime
 from playwright.async_api import async_playwright
@@ -11,6 +12,7 @@ USER_DATA_DIR = "./tiktok_user_data"
 CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 DM_STATUS_FILE = "dm_status.json"
 BACKSTAGE_DM_URL = "https://live-backstage.tiktok.com/portal/anchor/instant-messages"
+LOG_FILE = "dm.log"
 
 # Message templates
 MESSAGE_KR = """[크리에이터 제안]
@@ -58,7 +60,32 @@ def save_dm_status(data):
 
 def log(msg):
     timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] {msg}")
+    line = f"[{timestamp}] {msg}"
+    print(line)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except:
+        pass
+
+
+def _find_chrome_executable():
+    if sys.platform.startswith("win"):
+        candidates = [
+            os.environ.get("CHROME_PATH", ""),
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ]
+        for path in candidates:
+            if path and os.path.exists(path):
+                return path
+        return ""
+    if sys.platform == "darwin":
+        return CHROME_PATH if os.path.exists(CHROME_PATH) else ""
+    for path in ("/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"):
+        if os.path.exists(path):
+            return path
+    return ""
 
 
 async def send_dm(handle, nickname="", lang="kr", auto_send=True):
@@ -76,8 +103,7 @@ async def send_dm(handle, nickname="", lang="kr", auto_send=True):
     """
     log(f"Starting DM automation for @{handle} via Backstage...")
 
-    if not os.path.exists(CHROME_PATH):
-        return {"status": "error", "message": "Chrome not found"}
+    chrome_path = _find_chrome_executable()
 
     # Prepare message
     name = nickname if nickname else handle
@@ -92,7 +118,6 @@ async def send_dm(handle, nickname="", lang="kr", auto_send=True):
         launch_args = {
             "user_data_dir": os.path.abspath(USER_DATA_DIR),
             "headless": False,
-            "executable_path": CHROME_PATH,
             "args": [
                 "--no-first-run",
                 "--no-default-browser-check",
@@ -102,6 +127,12 @@ async def send_dm(handle, nickname="", lang="kr", auto_send=True):
             "viewport": {"width": 1200, "height": 800},
             "ignore_default_args": ["--enable-automation"],
         }
+        if chrome_path:
+            launch_args["executable_path"] = chrome_path
+            log(f"Using Chrome executable: {chrome_path}")
+        elif sys.platform.startswith("win"):
+            launch_args["channel"] = "chrome"
+            log("Using Playwright Chrome channel")
 
         context = None
         try:
@@ -116,9 +147,15 @@ async def send_dm(handle, nickname="", lang="kr", auto_send=True):
 
             # Check login
             if "login" in page.url.lower():
-                log("ERROR: Not logged in to Backstage!")
-                result = {"status": "error", "message": "Not logged in"}
-                return result
+                log("Not logged in. Please log in to Backstage in the opened browser...")
+                login_wait_start = time.time()
+                while "login" in page.url.lower():
+                    if time.time() - login_wait_start > 300:
+                        log("Login timeout after 5 minutes")
+                        result = {"status": "error", "message": "Not logged in"}
+                        return result
+                    await asyncio.sleep(2)
+                log("Login detected. Continuing...")
 
             # Find and fill the search input
             log(f"Searching for creator: {handle}")
@@ -200,8 +237,13 @@ async def send_dm(handle, nickname="", lang="kr", auto_send=True):
 
             # Copy message to clipboard and paste
             pyperclip.copy(message)
-            await page.keyboard.press("Meta+v")  # Cmd+V on Mac
+            if sys.platform.startswith("win"):
+                await page.keyboard.press("Control+v")
+            else:
+                await page.keyboard.press("Meta+v")  # Cmd+V on Mac
             await asyncio.sleep(0.5)
+
+
 
             if auto_send:
                 # Find and click send button
@@ -291,8 +333,7 @@ async def send_dm_batch(creators, lang="kr", delay=3):
     """
     log(f"Starting batch DM for {len(creators)} creators...")
 
-    if not os.path.exists(CHROME_PATH):
-        return {"success": [], "failed": [{"id": "all", "error": "Chrome not found"}]}
+    chrome_path = _find_chrome_executable()
 
     results = {"success": [], "failed": []}
 
@@ -300,7 +341,6 @@ async def send_dm_batch(creators, lang="kr", delay=3):
         launch_args = {
             "user_data_dir": os.path.abspath(USER_DATA_DIR),
             "headless": False,
-            "executable_path": CHROME_PATH,
             "args": [
                 "--no-first-run",
                 "--no-default-browser-check",
@@ -310,6 +350,12 @@ async def send_dm_batch(creators, lang="kr", delay=3):
             "viewport": {"width": 1200, "height": 800},
             "ignore_default_args": ["--enable-automation"],
         }
+        if chrome_path:
+            launch_args["executable_path"] = chrome_path
+            log(f"Using Chrome executable: {chrome_path}")
+        elif sys.platform.startswith("win"):
+            launch_args["channel"] = "chrome"
+            log("Using Playwright Chrome channel")
 
         context = None
         try:
@@ -324,8 +370,14 @@ async def send_dm_batch(creators, lang="kr", delay=3):
 
             # Check login
             if "login" in page.url.lower():
-                log("ERROR: Not logged in!")
-                return {"success": [], "failed": [{"id": "all", "error": "Not logged in"}]}
+                log("Not logged in. Please log in to Backstage in the opened browser...")
+                login_wait_start = time.time()
+                while "login" in page.url.lower():
+                    if time.time() - login_wait_start > 300:
+                        log("Login timeout after 5 minutes")
+                        return {"success": [], "failed": [{"id": "all", "error": "Not logged in"}]}
+                    await asyncio.sleep(2)
+                log("Login detected. Continuing...")
 
             for i, creator in enumerate(creators):
                 handle = creator.get("id")
@@ -371,8 +423,13 @@ async def send_dm_batch(creators, lang="kr", delay=3):
 
                     # Paste message
                     pyperclip.copy(message)
-                    await page.keyboard.press("Meta+v")  # Cmd+V on Mac
+                    if sys.platform.startswith("win"):
+                        await page.keyboard.press("Control+v")
+                    else:
+                        await page.keyboard.press("Meta+v")  # Cmd+V on Mac
                     await asyncio.sleep(0.3)
+
+
 
                     # Send
                     send_btn = page.locator('button:has-text("보내기")').first
@@ -394,10 +451,10 @@ async def send_dm_batch(creators, lang="kr", delay=3):
                     save_dm_status(dm_status)
 
                     results["success"].append(handle)
-                    log(f"  ✅ DM sent to @{handle}")
+                    log(f"  OK DM sent to @{handle}")
 
                 except Exception as e:
-                    log(f"  ❌ Failed: {e}")
+                    log(f"  NO Failed: {e}")
                     results["failed"].append({"id": handle, "error": str(e)})
 
                     dm_status = load_dm_status()
