@@ -9,6 +9,11 @@ from pynput import keyboard
 TIKTOK_REGEX = r"tiktok\.com/@([a-zA-Z0-9_.]+)"
 PENDING_FILE = "pending_creators.json"
 HOTKEY = keyboard.Key.ctrl_r  # Right Ctrl key
+# Speed tuning
+HOTKEY_COOLDOWN = 0.25
+NEXT_DELAY = 0.05
+DUPLICATE_DELAY = 0.02
+ENABLE_NICKNAME = True
 
 def show_notification(title, message, sound="Pop"):
     script = f'display notification "{message}" with title "{title}" sound name "{sound}"'
@@ -26,7 +31,7 @@ def get_chrome_url():
     end tell
     '''
     try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=3)
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=1.5)
         return result.stdout.strip()
     except:
         return ""
@@ -49,7 +54,7 @@ def get_live_nickname():
     end tell
     '''
     try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=1.0)
         title = result.stdout.strip()
 
         if not title or "tiktok" not in title.lower():
@@ -127,7 +132,7 @@ def on_hotkey():
     global session_ids, last_trigger
 
     now = time.time()
-    if now - last_trigger < 0.8:
+    if now - last_trigger < HOTKEY_COOLDOWN:
         return
     last_trigger = now
 
@@ -150,19 +155,23 @@ def on_hotkey():
         if username not in session_ids:
             session_ids.add(username)
 
-            nickname = get_live_nickname()
-            if nickname:
-                print(f"[Nickname] {nickname}")
+            nickname = ""
+            if ENABLE_NICKNAME:
+                nickname = get_live_nickname()
+                if nickname:
+                    print(f"[Nickname] {nickname}")
 
             added = add_creator(username, nickname)
 
             if added:
-                time.sleep(0.3)
+                if NEXT_DELAY > 0:
+                    time.sleep(NEXT_DELAY)
                 press_down_arrow()
                 print("[Auto] → Next live")
         else:
             print(f"[Skip] @{username} already captured")
-            time.sleep(0.2)
+            if DUPLICATE_DELAY > 0:
+                time.sleep(DUPLICATE_DELAY)
             press_down_arrow()
     else:
         print("[Skip] Not a TikTok URL")
