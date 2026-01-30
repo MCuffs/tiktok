@@ -38,6 +38,10 @@ state.json
 *.webp
 network_sample.json
 
+# Logs & build artifacts
+*.log
+*.dmg
+
 # IDE
 .vscode/
 .idea/

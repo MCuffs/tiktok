@@ -11,17 +11,38 @@ def run_backstage_work():
     chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     
     with sync_playwright() as p:
-        print("Launching browser...")
+        print("Launching browser (Optimized Mode)...")
         # Add flags to try to restore session better?
         browser = p.chromium.launch_persistent_context(
             user_data_dir=USER_DATA_DIR,
             executable_path=chrome_path,
             headless=False,
-            args=["--no-first-run", "--disable-blink-features=AutomationControlled"],
+            # Stealth args
+            args=[
+                "--no-first-run", 
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--ignore-certificate-errors",
+                "--no-sandbox"
+            ],
             viewport=None
         )
         
         page = browser.pages[0] if browser.pages else browser.new_page()
+
+        # --- RESOURCE BLOCKING ---
+        # Block heavy assets for speed
+        page.route("**/*", lambda route: route.abort() 
+            if route.request.resource_type in ["image", "media", "font"] 
+            else route.continue_() # Keep CSS for layout visibility in headed mode
+        )
+
+        # --- STEALTH SCRIPT (Manual Injection) ---
+        page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.navigator.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        """)
         
         print("\n" + "="*80)
         print(" SORRY! The browser had to restart.")

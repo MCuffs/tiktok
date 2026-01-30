@@ -46,14 +46,24 @@ def save_verified(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+MAX_VERIFY_COUNT = 30  # TikTok Backstage limit
+
 async def verify_all():
     pending = load_pending()
     if not pending:
         log("No pending creators to verify")
         return
 
-    ids = [c["id"] for c in pending]
-    log(f"Verifying {len(ids)} creators: {', '.join(ids)}")
+    # Limit to 30 creators max
+    to_verify = pending[:MAX_VERIFY_COUNT]
+    remaining = pending[MAX_VERIFY_COUNT:]
+
+    ids = [c["id"] for c in to_verify]
+    # Create lookup for nicknames
+    nickname_map = {c["id"]: c.get("nickname", "") for c in to_verify}
+    log(f"Verifying {len(ids)} creators (max {MAX_VERIFY_COUNT})")
+    if remaining:
+        log(f"  ({len(remaining)} more will be verified next time)")
 
     chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
@@ -160,10 +170,13 @@ async def verify_all():
                     # Determine status
                     now = int(time.time() * 1000)
 
+                    nickname = nickname_map.get(matched_id, "")
+
                     if "사용 가능" in text or "Available" in text:
                         log(f"  ✅ {matched_id}: Available")
                         results["available"].append({
                             "id": matched_id,
+                            "nickname": nickname,
                             "reason": "사용 가능",
                             "verified_at": now
                         })
@@ -171,6 +184,7 @@ async def verify_all():
                         log(f"  ❌ {matched_id}: Ineligible")
                         results["unavailable"].append({
                             "id": matched_id,
+                            "nickname": nickname,
                             "reason": "부적격",
                             "verified_at": now
                         })
@@ -178,6 +192,7 @@ async def verify_all():
                         log(f"  ❌ {matched_id}: Already bound")
                         results["unavailable"].append({
                             "id": matched_id,
+                            "nickname": nickname,
                             "reason": "이미 소속됨",
                             "verified_at": now
                         })
@@ -185,6 +200,7 @@ async def verify_all():
                         log(f"  ❌ {matched_id}: Not qualified")
                         results["unavailable"].append({
                             "id": matched_id,
+                            "nickname": nickname,
                             "reason": "자격 없음",
                             "verified_at": now
                         })
@@ -192,6 +208,7 @@ async def verify_all():
                         log(f"  ❓ {matched_id}: Unknown status")
                         results["unavailable"].append({
                             "id": matched_id,
+                            "nickname": nickname,
                             "reason": "알 수 없음",
                             "verified_at": now
                         })
@@ -205,10 +222,12 @@ async def verify_all():
             verified["unavailable"].extend(results["unavailable"])
             save_verified(verified)
 
-            # Clear pending
-            save_pending([])
+            # Keep remaining pending (those over 30 limit)
+            save_pending(remaining)
 
             log(f"\nDone! Available: {len(results['available'])}, Unavailable: {len(results['unavailable'])}")
+            if remaining:
+                log(f"Remaining pending: {len(remaining)}")
 
         except Exception as e:
             log(f"ERROR: {e}")

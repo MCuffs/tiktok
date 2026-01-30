@@ -11,10 +11,12 @@ import urllib.parse
 PORT = 8091
 PENDING_FILE = "pending_creators.json"
 VERIFIED_FILE = "verified_creators.json"
+DM_STATUS_FILE = "dm_status.json"
 LOG_FILE = "server.log"
 
 VERIFY_PROCESS = None
 CLIPPER_PROCESS = None
+DM_PROCESS = None
 
 
 def log(msg):
@@ -93,22 +95,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Add verified (available) - support both formats
             available_list = verified.get("available", []) or verified.get("available_creators", [])
             for c in available_list:
-                all_creators.append({
+                creator = {
                     "id": c["id"],
                     "status": "available",
                     "reason": c.get("reason", "사용 가능"),
                     "verified_at": c.get("verified_at", 0)
-                })
+                }
+                if c.get("nickname"):
+                    creator["nickname"] = c["nickname"]
+                all_creators.append(creator)
 
             # Add verified (unavailable) - support both formats
             unavailable_list = verified.get("unavailable", []) or verified.get("unavailable_creators", [])
             for c in unavailable_list:
-                all_creators.append({
+                creator = {
                     "id": c["id"],
                     "status": "unavailable",
                     "reason": c.get("reason", ""),
                     "verified_at": c.get("verified_at", 0)
-                })
+                }
+                if c.get("nickname"):
+                    creator["nickname"] = c["nickname"]
+                all_creators.append(creator)
 
             # Sort: available first, then by time (newest first)
             def get_sort_key(x):
@@ -136,6 +144,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             running = VERIFY_PROCESS and VERIFY_PROCESS.poll() is None
             self.send_json({"running": running})
 
+        # DM status
+        elif path == "/dm/status":
+            dm_data = load_json(DM_STATUS_FILE, {"sent": [], "failed": []})
+            running = DM_PROCESS and DM_PROCESS.poll() is None
+            self.send_json({
+                "running": running,
+                "sent": dm_data.get("sent", []),
+                "failed": dm_data.get("failed", [])
+            })
+
         # Logs
         elif path == "/logs":
             self.send_response(200)
@@ -157,7 +175,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        global CLIPPER_PROCESS, VERIFY_PROCESS
+        global CLIPPER_PROCESS, VERIFY_PROCESS, DM_PROCESS
 
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -204,17 +222,91 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             )
             self.send_json({"status": "success", "message": f"Verifying {len(pending)} creators"})
 
-        # Clear all
+        # Clear verified only (keep pending)
         elif path == "/clear":
-            save_json(PENDING_FILE, [])
             save_json(VERIFIED_FILE, {"available": [], "unavailable": []})
-            self.send_json({"status": "success", "message": "Cleared all"})
+            self.send_json({"status": "success", "message": "Cleared verified creators"})
 
         # Login
         elif path == "/login":
             log("Opening login browser...")
             subprocess.Popen(["python3", "setup_login.py"])
             self.send_json({"status": "success", "message": "Login browser opened"})
+
+        # Send DM to single creator
+        elif path == "/dm/send":
+            # Read request body
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+
+            try:
+                data = json.loads(body)
+                handle = data.get("id", "")
+                nickname = data.get("nickname", "")
+                lang = data.get("lang", "kr")
+
+                if not handle:
+                    self.send_json({"status": "error", "message": "No handle provided"})
+                    return
+
+                log(f"Sending DM to @{handle}...")
+                DM_PROCESS = subprocess.Popen(
+                    ["python3", "send_dm.py", handle, nickname, lang],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT
+                )
+                self.send_json({"status": "success", "message": f"DM sending to @{handle}"})
+
+            except json.JSONDecodeError:
+                self.send_json({"status": "error", "message": "Invalid JSON"})
+
+        # Send DM to all available creators
+        elif path == "/dm/send-all":
+            if DM_PROCESS and DM_PROCESS.poll() is None:
+                self.send_json({"status": "error", "message": "DM process already running"})
+                return
+
+            # Read request body for lang preference
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+
+            try:
+                data = json.loads(body) if body else {}
+                lang = data.get("lang", "kr")
+
+                # Get available creators that haven't been DMed
+                verified = load_json(VERIFIED_FILE, {"available": [], "unavailable": []})
+                dm_status = load_json(DM_STATUS_FILE, {"sent": [], "failed": []})
+
+                available = verified.get("available", []) or verified.get("available_creators", [])
+                sent_ids = set(s.get("id") for s in dm_status.get("sent", []))
+
+                to_dm = [c for c in available if c.get("id") not in sent_ids]
+
+                if not to_dm:
+                    self.send_json({"status": "error", "message": "No creators to DM"})
+                    return
+
+                log(f"Starting batch DM to {len(to_dm)} creators...")
+
+                # Write batch file for the DM script
+                with open("dm_batch.json", "w", encoding="utf-8") as f:
+                    json.dump({"creators": to_dm, "lang": lang}, f, ensure_ascii=False)
+
+                DM_PROCESS = subprocess.Popen(
+                    ["python3", "send_dm_batch.py"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT
+                )
+                self.send_json({"status": "success", "message": f"DM batch started for {len(to_dm)} creators"})
+
+            except json.JSONDecodeError:
+                self.send_json({"status": "error", "message": "Invalid JSON"})
+
+        # Clear DM status
+        elif path == "/dm/clear":
+            save_json(DM_STATUS_FILE, {"sent": [], "failed": []})
+            self.send_json({"status": "success", "message": "DM status cleared"})
 
         else:
             self.send_error(404)

@@ -1,191 +1,178 @@
 import re
+import random
 import asyncio
 import sys
 import os
 import json
+import math
 from playwright.async_api import async_playwright
 
 USER_DATA_DIR = "./tiktok_user_data"
 OUTPUT_FILE = "streamers_data.json"
-TXT_FILE = "active_streamers.txt"
 
-# Limit concurrent pages to avoid detection/resource issues
-CONCURRENT_PAGES = 3
-TARGET_QUALIFIED_COUNT = 50
+# 🌊 SIMULATED LIVE FEED KEYWORDS (Fallback)
+FEED_CLUSTERS = [
+    "라이브", "소통", "수다", "잡담", 
+    "게임", "리그오브레전드", "발로란트", "배그", "마인크래프트", 
+    "노래", "연주", "버스킹", "피아노", 
+    "먹방", "요리", "음식", 
+    "그림", "공부", "운동", 
+    "Just Chatting", "Live", "Gaming", "Kpop", "Dance"
+]
 
-def parse_count(count_str):
-    """
-    Parses follower/like count strings like "1.2K", "300", "5M" into integers.
-    Returns 0 if parsing fails or input is invalid.
-    """
-    if not count_str or count_str == '-':
-        return 0
+# --- 🎭 HUMAN SIMULATION UTILS ---
+async def human_like_mouse_move(page, start_x, start_y, end_x, end_y, steps=25):
+    # Simple Bezier Curve simulation
+    # Control point for curve
+    ctrl_x = (start_x + end_x) / 2 + random.randint(-100, 100)
+    ctrl_y = (start_y + end_y) / 2 + random.randint(-100, 100)
     
-    count_str = count_str.upper().strip()
-    multiplier = 1
-    
-    if 'K' in count_str:
-        multiplier = 1000
-        count_str = count_str.replace('K', '')
-    elif 'M' in count_str:
-        multiplier = 1000000
-        count_str = count_str.replace('M', '')
-    elif 'B' in count_str:
-        multiplier = 1000000000
-        count_str = count_str.replace('B', '')
+    for i in range(steps + 1):
+        t = i / steps
+        # Quadratic Bezier
+        x = (1 - t)**2 * start_x + 2 * (1 - t) * t * ctrl_x + t**2 * end_x
+        y = (1 - t)**2 * start_y + 2 * (1 - t) * t * ctrl_y + t**2 * end_y
         
-    try:
-        return int(float(count_str) * multiplier)
-    except:
-        return 0
+        await page.mouse.move(x, y)
+        await asyncio.sleep(random.uniform(0.005, 0.015))
 
-async def crawl_tiktok_live(headless=False):
-    print(f"🚀 Starting Simple Crawler (Headless: {headless})...")
-    
-    chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    if not os.path.exists(chrome_path):
-        chrome_path = None
+async def human_scroll(page):
+    # Variable speed scroll
+    for _ in range(random.randint(2, 4)):
+        scroll_amount = random.randint(300, 700)
+        await page.mouse.wheel(0, scroll_amount)
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+
+async def crawl_tiktok_live():
+    print("🚀 Starting Crawler (Human Simulation Mode)...")
+    collected_streamers = {}
     
     async with async_playwright() as p:
         args = [
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--ignore-certificate-errors",
-            "--disable-blink-features=AutomationControlled",
-            "--window-size=500,600",
-            "--window-position=5000,5000" # Bottom-right (clamped)
+            "--no-first-run", "--disable-blink-features=AutomationControlled", 
+            "--disable-infobars", "--exclude-switches=enable-automation",
+            "--disable-dev-shm-usage", "--disable-gpu",
         ]
-        
         launch_args = {
             "user_data_dir": USER_DATA_DIR,
-            "headless": False, 
+            "headless": False,
             "args": args,
-            "viewport": {'width': 1280, 'height': 800},
+            "viewport": {'width': 1280 + random.randint(0, 50), 'height': 800 + random.randint(0, 50)},
+            "ignore_default_args": ["--enable-automation"]
         }
-        
-        if chrome_path:
-            launch_args["executable_path"] = chrome_path
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.exists(chrome_path): launch_args["executable_path"] = chrome_path
         
         context = await p.chromium.launch_persistent_context(**launch_args)
-        
-        # Block unnecessary resources for speed
-        await context.route("**/*.{png,jpg,jpeg,gif,webp,svg,mp4,woff,woff2}", lambda route: route.abort())
-        
-        # --- PHASE 1: Collect Candidates ---
-        print("\nPhase 1: collecting candidates...")
         page = context.pages[0] if context.pages else await context.new_page()
         
-        candidates = set()
+        # --- 🕵️‍♂️ DEEP STEALTH INJECTION v2 ---
+        await page.add_init_script("""
+            // 1. Mask WebDriver
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            
+            // 2. Mask Permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                Promise.resolve({ state: 'denied' }) :
+                originalQuery(parameters)
+            );
+            
+            // 3. Mock Plugins
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            
+            // 4. Mock Chrome Runtime
+            window.chrome = { runtime: {} };
+        """)
         
-        # Only visit main categories once
-        categories = [
-            "https://www.tiktok.com/live",
-            "https://www.tiktok.com/live/gaming",
-            "https://www.tiktok.com/live/music"
-        ]
-        
-        for url in categories:
+        # --- [CORE] Network Interception ---
+        async def handle_response(response):
             try:
-                print(f"  📂 Visiting: {url}")
-                await page.goto(url, timeout=45000, wait_until="domcontentloaded")
-                await asyncio.sleep(2)
-                
-                # Scroll 5 times per category
-                for i in range(5):
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(1.5)
-                    
-                    links = await page.query_selector_all('a')
-                    for link in links:
-                        href = await link.get_attribute('href')
-                        if href and '/@' in href:
-                             match = re.search(r'/@([^/?]+)', href)
-                             if match:
-                                 uid = match.group(1)
-                                 if uid not in candidates:
-                                     candidates.add(uid)
-                    
-                    if len(candidates) > 70: break
-            except Exception as e:
-                print(f"Error visiting {url}: {e}")
-            
-            if len(candidates) > 70: break
-            
-        candidate_list = list(candidates)[:70] # Max 70 candidates to process
-        print(f"✅ Found {len(candidate_list)} candidates. Starting details scrape...")
-        
-        # --- PHASE 2: Scrape Details ---
-        detailed_results = []
-        queue = asyncio.Queue()
-        for uid in candidate_list:
-            queue.put_nowait(uid)
-            
-        async def worker(wid):
-            wpage = await context.new_page()
-            while not queue.empty():
-                uid = await queue.get()
-                try:
-                    await wpage.goto(f"https://www.tiktok.com/@{uid}", timeout=30000, wait_until="domcontentloaded")
-                    await asyncio.sleep(1)
-                    
-                    # Extract Data
-                    nick = uid
-                    followers = "0"
-                    likes = "-"
-                    
-                    try:
-                        el = await wpage.query_selector('[data-e2e="user-subtitle"]') or await wpage.query_selector('h1[data-e2e="user-title"]')
-                        if el: nick = await el.inner_text()
-                    except: pass
-                    
-                    try:
-                        el = await wpage.query_selector('[data-e2e="followers-count"]')
-                        if el: followers = await el.inner_text()
-                    except: pass
-                    
-                    try:
-                        el = await wpage.query_selector('[data-e2e="likes-count"]')
-                        if el: likes = await el.inner_text()
-                    except: pass
-                    
-                    # Check Filter
-                    count = parse_count(followers)
-                    if count >= 150:
-                        print(f"  [{wid}] ✅ {uid} ({followers})")
-                        detailed_results.append({
-                            "id": uid,
-                            "nickname": nick,
-                            "followers": followers,
-                            "likes": likes,
-                            "url": f"https://www.tiktok.com/@{uid}"
-                        })
-                    else:
-                        print(f"  [{wid}] ❌ {uid} (Too few followers: {followers})")
-                        
-                except Exception as e:
-                    print(f"  [{wid}] Error {uid}: {e}")
-                
-                queue.task_done()
-            await wpage.close()
-            
-        tasks = [asyncio.create_task(worker(i)) for i in range(CONCURRENT_PAGES)]
-        await asyncio.gather(*tasks)
-        
-        await context.close()
-        
-    # --- Save ---
-    # Take top 50
-    final_results = detailed_results[:50]
-    print(f"\n✅ Finished. Saving {len(final_results)} profiles.")
-    
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_results, f, ensure_ascii=False, indent=2)
-        
-    with open(TXT_FILE, "w", encoding="utf-8") as f:
-        for s in final_results:
-            f.write(s["id"] + "\n")
+                url = response.url
+                if "json" not in response.headers.get("content-type", ""): return
 
+                if "/api/search/item" in url or "/api/search/user" in url or "webcast" in url:
+                    try:
+                        data = await response.json()
+                        extract_live_users(data)
+                    except: pass
+            except: pass
+
+        def extract_live_users(obj):
+            if isinstance(obj, dict):
+                if "owner" in obj and ("roomId" in obj or "room_id" in obj):
+                    process_user(obj["owner"], obj)
+                elif "user" in obj:
+                    process_user(obj["user"], obj)
+                elif "user_info" in obj:
+                    process_user(obj["user_info"], obj)
+                for v in obj.values():
+                    extract_live_users(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    extract_live_users(item)
+
+        def process_user(owner, source_obj):
+            if not owner or not isinstance(owner, dict): return
+            uid = owner.get("uniqueId") or owner.get("display_id")
+            if not uid: return
+            
+            room_id = str(source_obj.get("room_id") or source_obj.get("roomId", "") or owner.get("roomId", "") or "0")
+            if not room_id or room_id == "0": return 
+            
+            # Simplified Agency Filter
+            nickname = owner.get("nickname", "")
+            if "Official" in nickname or "Shop" in nickname: return
+
+            if uid not in collected_streamers:
+                collected_streamers[uid] = {
+                    "id": uid, 
+                    "nickname": nickname, 
+                    "room_id": room_id,
+                    "url": f"https://www.tiktok.com/@{uid}"
+                }
+                print(f"    ✨ Captured: {uid}")
+                if len(collected_streamers) % 2 == 0:
+                     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+                        json.dump(list(collected_streamers.values()), f, ensure_ascii=False, indent=2)
+
+        page.on("response", handle_response)
+        
+        # --- STRATEGY: HUMAN TRY /LIVE FIRST ---
+        print("🧠 Phase 1: Attempting Human-like /live access...")
+        try:
+            await page.goto("https://www.tiktok.com/live", timeout=45000, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(4, 7)) # Human pause
+            
+            # Human Mouse Move to Center
+            await human_like_mouse_move(page, 100, 100, 640, 400)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            # Human Scroll
+            await human_scroll(page)
+            await asyncio.sleep(random.uniform(2, 4))
+            
+            if len(collected_streamers) > 0:
+                print("✅ /live Feed Success! (Stealth Worked)")
+        except Exception as e:
+            print(f"⚠️ /live access failed: {e}")
+            
+        # --- FALLBACK: SIMULATED FEED ---
+        if len(collected_streamers) == 0:
+            print("\n🔄 Switching to Phase 2: Simulated Feed (Fallback)...")
+            random.shuffle(FEED_CLUSTERS)
+            for keyword in FEED_CLUSTERS:
+                if len(collected_streamers) >= 200: break
+                
+                print(f"   🔍 Cluster: '{keyword}'")
+                try:
+                    await page.goto(f"https://www.tiktok.com/search/user?q={keyword}", timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.sleep(random.uniform(3, 5))
+                    await human_scroll(page)
+                except: pass
+
+        await context.close()
 
 if __name__ == "__main__":
-    use_headless = "--headless" in sys.argv
-    asyncio.run(crawl_tiktok_live(headless=use_headless))
+    asyncio.run(crawl_tiktok_live())

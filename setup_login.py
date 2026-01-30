@@ -40,8 +40,13 @@ def setup_login():
         
         page = browser.pages[0]
         
-        print("Navigating to TikTok Login...")
-        page.goto("https://www.tiktok.com/login")
+        print("Navigating to TikTok Login (KR)...")
+        # Go to KR main first then login, or direct KR login
+        page.goto("https://www.tiktok.com/ko-KR/")
+        time.sleep(2)
+        
+        # Click login button or go to url
+        page.goto("https://www.tiktok.com/login?lang=ko-KR")
         
         print("\n" + "="*50)
         print("PLEASE LOG IN MANUALLY IN THE OPEN BROWSER WINDOW.")
